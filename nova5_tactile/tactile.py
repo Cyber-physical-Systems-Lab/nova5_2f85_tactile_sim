@@ -14,15 +14,16 @@ ARRAY_SIZE = (6, 9)  # taxels across finger width x along finger
 MARGIN = .002
 
 
-def make_tactile_sensors(pads, contact_object_path, *, array_size=ARRAY_SIZE, margin=MARGIN,
+def make_tactile_sensors(pads, contact_objects, *, array_size=ARRAY_SIZE, margin=MARGIN,
                          normal_stiffness=1., tangential_stiffness=.1, friction=2., debug_vis=False):
-    """Returns {'left': VisuoTactileSensor, 'right': ...}. Create before sim.reset()."""
+    """{side: VisuoTactileSensor}; contact_objects is one path or {side: path}. Create before sim.reset()."""
     sensors = {}
     for side, pad in pads.items():
+        pad = pad['body'] if isinstance(pad, dict) else pad
         cfg = VisuoTactileSensorCfg(prim_path=pad+'/tactile_sensor', update_period=0., debug_vis=debug_vis,
             render_cfg=GELSIGHT_R15_CFG, enable_camera_tactile=False, enable_force_field=True,
             tactile_array_size=tuple(array_size), tactile_margin=margin,
-            contact_object_prim_path_expr=contact_object_path,
+            contact_object_prim_path_expr=contact_objects[side] if isinstance(contact_objects, dict) else contact_objects,
             normal_contact_stiffness=normal_stiffness, tangential_stiffness=tangential_stiffness,
             friction_coefficient=friction)
         sensors[side] = VisuoTactileSensor(cfg)
@@ -30,12 +31,23 @@ def make_tactile_sensors(pads, contact_object_path, *, array_size=ARRAY_SIZE, ma
 
 
 def read(sensor, array_size=ARRAY_SIZE):
-    """Numpy snapshot of env 0: normal (rows, cols), shear (rows, cols, 2), depth (rows, cols)."""
+    """Numpy snapshot of env 0 in the pad frame (taxels.py convention).
+
+    normal (rows, cols), shear (rows, cols, 2), depth (rows, cols); rows run
+    along pad x (finger width), cols along pad y (towards the fingertip).
+    TacSL's tactile frame is the pad frame turned by -pi about z, so its
+    shear x/y are negated here.
+    """
     d = sensor.data
     def grid(x, *tail):
         return x[0].detach().cpu().numpy().reshape(*array_size, *tail)
-    return {'normal': grid(d.tactile_normal_force), 'shear': grid(d.tactile_shear_force, 2),
+    return {'normal': grid(d.tactile_normal_force), 'shear': -grid(d.tactile_shear_force, 2),
             'depth': grid(d.penetration_depth)}
+
+
+def taxel_positions(sensor, array_size=ARRAY_SIZE):
+    """(rows, cols, 3) TacSL taxel positions in the pad body frame."""
+    return sensor._tactile_pos_local.cpu().numpy().reshape(*array_size, 3)
 
 
 def image(snapshot, resolution=30, normal_scale=None, shear_scale=None):

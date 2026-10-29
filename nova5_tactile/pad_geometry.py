@@ -66,3 +66,16 @@ def centre_of_mass(points, triangles):
     a, b, c = (points[triangles[:, k]] for k in range(3))
     v = np.einsum('ij,ij->i', a, np.cross(b, c))/6
     return ((a+b+c)/4*v[:, None]).sum(0)/v.sum()
+
+
+def taxel_boxes(grid=(6, 9), contact_size=CONTACT_SIZE, thickness=THICKNESS):
+    """[((r, c), (points, triangles))] boxes tiling the contact face, z in [-thickness, 0]."""
+    rows, cols = grid
+    px, py = contact_size[0]/rows, contact_size[1]/cols
+    pts, tris = box((px, py, thickness))
+    out = []
+    for r in range(rows):
+        for c in range(cols):
+            centre = [-contact_size[0]/2+(r+.5)*px, -contact_size[1]/2+(c+.5)*py, -thickness/2]
+            out.append(((r, c), (pts+centre, tris)))
+    return out

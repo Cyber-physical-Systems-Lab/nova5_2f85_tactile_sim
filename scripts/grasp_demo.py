@@ -1,7 +1,10 @@
 """NOVA5 + Robotiq 2F-85 + fingertip tactile pads: approach, close, lift a free box.
 
-Logs both pads' taxel normal/shear fields next to the physical contact forces.
-The close/lift schedule is fixed open-loop; tactile data is recorded, not used.
+Logs both pads with two tactile backends side by side: TacSL force field
+(SDF penetration) and contact-report taxels (PhysX impulses on per-taxel
+colliders), next to each pad's net contact force. Both are in the pad frame
+(taxels.py). The close/lift schedule is fixed open-loop; tactile data is
+recorded, not used.
 """
 import argparse
 from isaaclab.app import AppLauncher
@@ -12,6 +15,12 @@ p.add_argument('--keep-open', action='store_true', help='negative control: never
 p.add_argument('--pad-stiffness', type=float, default=1e4, help='compliant pad contact stiffness [N/m], 0 = rigid')
 p.add_argument('--pad-damping', type=float, default=20.)
 p.add_argument('--tactile-stiffness', type=float, default=1., help='TacSL per-taxel normal stiffness')
+p.add_argument('--pad-colliders', choices=['taxels', 'single'], default='taxels',
+               help='taxels: one box collider per taxel (contact backend direct); single: one hull, contacts binned by position')
+p.add_argument('--noise-std', type=float, default=0., help='contact backend per-taxel noise [N]')
+p.add_argument('--deadband', type=float, default=0.)
+p.add_argument('--saturation', type=float, default=0.)
+p.add_argument('--quantization', type=float, default=0.)
 p.add_argument('--debug-taxels', action='store_true', help='draw taxel markers (GUI)')
 AppLauncher.add_app_launcher_args(p); args = p.parse_args()
 app = AppLauncher(args).app
@@ -31,6 +40,8 @@ from nova5_tactile import ROOT
 from nova5_tactile.robot import build_nova5_2f85, spawn_sdf_box
 from nova5_tactile.kinematics import pose_matrix, forward_chain, tool_point, rotation_error, array
 from nova5_tactile import tactile
+from nova5_tactile.contact_taxels import ContactTaxelSensors
+from nova5_tactile.taxels import SensorModelParams
 
 # Top-down grasp seed from go2_mycobot_ral configs/nova5_loaded_grasp.json.
 IK_SEED = [0.26833561, 0.00559351, 1.52478671, 0.04041244, -1.57079610, 1.83913481]
@@ -47,7 +58,8 @@ def main():
     sim.set_camera_view(eye=(.35, .45, 1.15), target=(-.4, -.25, .8))
     cfg = sim_utils.GroundPlaneCfg(); cfg.func('/World/Ground', cfg)
     cfg = sim_utils.DomeLightCfg(intensity=1800.); cfg.func('/World/Light', cfg)
-    robot, spec = build_nova5_2f85(sim.stage, pad_stiffness=args.pad_stiffness or None, pad_damping=args.pad_damping)
+    robot, spec = build_nova5_2f85(sim.stage, pad_stiffness=args.pad_stiffness or None, pad_damping=args.pad_damping,
+                                   pad_colliders=args.pad_colliders)
     robot.cfg.actuators['arm'].stiffness = 250.
     robot.cfg.actuators['arm'].damping = 30.
     center = np.array([-.4, -.25, .825]); offset = np.array(spec['tool_offset'])
@@ -63,13 +75,19 @@ def main():
     pads = spec['gripper']['tactile_pads']
     taxels = tactile.make_tactile_sensors(pads, '/World/Object', normal_stiffness=args.tactile_stiffness,
                                           debug_vis=args.debug_taxels)
-    contacts = {side: ContactSensor(ContactSensorCfg(prim_path=path, filter_prim_paths_expr=['/World/Object'], update_period=0.))
-                for side, path in pads.items()}
+    contacts = {side: ContactSensor(ContactSensorCfg(prim_path=pad['body'], filter_prim_paths_expr=['/World/Object'], update_period=0.))
+                for side, pad in pads.items()}
+    model = SensorModelParams(args.noise_std, args.deadband, args.saturation, args.quantization)
+    taxels_c = ContactTaxelSensors(pads, '/World/Object', model=model)
     support = ContactSensor(ContactSensorCfg(prim_path='/World/Surface', filter_prim_paths_expr=['/World/Object'], update_period=0.))
     sim.reset()
 
     arm = [robot.joint_names.index(n) for n in spec['arm_joints']]; flange = robot.body_names.index(spec['flange'])
     gi = robot.joint_names.index('finger_joint')
+    pad_ids = {side: robot.body_names.index(pad['body'].rsplit('/', 1)[-1]) for side, pad in pads.items()}
+    def pad_poses():
+        poses = array(robot.data.body_link_pose_w)[0]
+        return {side: pose_matrix(poses[i, :3], poses[i, 3:]) for side, i in pad_ids.items()}
     joints = {prim.GetName(): UsdPhysics.Joint(prim) for prim in Usd.PrimRange(sim.stage.GetPrimAtPath('/World/Robot'))
               if prim.IsA(UsdPhysics.Joint)}
     parents = []; children = []; axes = []
@@ -100,7 +118,10 @@ def main():
         print('TAXELS', s.cfg.prim_path, s.num_tactile_points, flush=True)
     meta = {'plant': spec, 'dt': dt, 'args': {k: v for k, v in vars(args).items() if isinstance(v, (int, float, str, bool, type(None)))},
             'tactile': {'model': 'TacSL force field (isaaclab_contrib)', 'array_size': tactile.ARRAY_SIZE,
-                        'margin_m': tactile.MARGIN, 'taxel_pos_pad_m': {k: s._tactile_pos_local.cpu().tolist() for k, s in taxels.items()}},
+                        'margin_m': tactile.MARGIN, 'taxel_pos_pad_m': {k: tactile.taxel_positions(s).tolist() for k, s in taxels.items()},
+                        'contact_backend': {'colliders': args.pad_colliders, 'grid': list(taxels_c.spec.shape),
+                                            'taxel_centres_pad_m': taxels_c.spec.centers().tolist(), 'sensor_model': vars(model)},
+                        'frame': 'pad frame: z into finger, rows along x (width), cols along y (to fingertip); force on pad'},
             'object_pose_writes_after_initialization': 0, 'controller_uses_tactile': False}
     (out/'metadata.json').write_text(json.dumps(meta, indent=2)+'\n')
     sim.stage.Export(str(out/'scene.usda'))
@@ -126,6 +147,7 @@ def main():
         sim.step(render=not args.headless); robot.update(dt); obj.update(dt); surface.update(dt)
         for s in [*taxels.values(), *contacts.values(), support]:
             s.update(dt)
+        cframes = taxels_c.update(pad_poses(), dt)
         forces = {k: float(np.linalg.norm(array(c.data.force_matrix_w))) for k, c in contacts.items()}
         support_force = float(np.linalg.norm(array(support.data.force_matrix_w)))
         op = array(obj.data.root_pos_w)[0]; tool, _ = tool_point(array(robot.data.body_link_pose_w)[0, flange], offset)
@@ -138,15 +160,21 @@ def main():
             snap = {k: tactile.read(s) for k, s in taxels.items()}
             rec = {'t': t, 'phase': phase, 'object': op.tolist(), 'tool': tool.tolist(), 'pad_contact_force_n': forces,
                    'support_force_n': support_force, 'gripper_q': gq, 'retained': retained,
-                   'tactile': {k: {'normal_sum': float(v['normal'].sum()), 'shear_sum': v['shear'].sum((0, 1)).tolist(),
-                                   'max_depth_m': float(v['depth'].max()), 'active_taxels': int((v['depth'] > 0).sum())}
-                               for k, v in snap.items()}}
+                   'tacsl': {k: {'normal_sum': float(v['normal'].sum()), 'shear_sum': v['shear'].sum((0, 1)).tolist(),
+                                 'max_depth_m': float(v['depth'].max()), 'active_taxels': int((v['depth'] > 0).sum())}
+                             for k, v in snap.items()},
+                   'contact_taxels': {k: {'normal_sum': f.total_normal, 'shear_sum': f.total_shear.tolist(),
+                                          'active_taxels': int((f.normal > 0).sum()), 'num_contacts': f.num_contacts,
+                                          **f.meta}
+                                      for k, f in cframes.items()}}
             records.append(rec)
             np.savez_compressed(out/'tactile'/f'{step//20:06d}.npz', t=t,
-                                **{f'{k}_{f}': v[f] for k, v in snap.items() for f in v})
+                                **{f'tacsl_{k}_{f}': v[f] for k, v in snap.items() for f in v},
+                                **{f'contact_{k}_{f}': getattr(v, f) for k, v in cframes.items() for f in ('normal', 'shear')})
             if step % 400 == 0:
                 print('STEP', f'{t:.2f}', phase, 'z', round(op[2]-center[2], 4), 'pad_N', {k: round(v, 3) for k, v in forces.items()},
-                      'tactile', {k: (r['active_taxels'], round(r['normal_sum'], 4)) for k, r in rec['tactile'].items()}, flush=True)
+                      'tacsl', {k: (r['active_taxels'], round(r['normal_sum'], 4)) for k, r in rec['tacsl'].items()},
+                      'contact', {k: (r['active_taxels'], round(r['normal_sum'], 3)) for k, r in rec['contact_taxels'].items()}, flush=True)
     result = {'success': success, 'success_t': success_t, 'keep_open': args.keep_open, 'records': records,
               'gate': '2 continuous seconds: lift >6cm, both pad contacts >.05N, no support >.02N, tool-object distance <4cm'}
     (out/'result.json').write_text(json.dumps(result, indent=2)+'\n')

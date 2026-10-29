@@ -25,7 +25,7 @@ def cube(path, size, position, color):
 
 
 def build_nova5_2f85(stage, root='/World/Robot', *, table_height=.70, table_size=(.3, .3),
-                     tactile=True, pad_stiffness=1e4, pad_damping=20.):
+                     tactile=True, pad_stiffness=1e4, pad_damping=20., pad_colliders='taxels', taxel_grid=(6, 9)):
     """Spawn table + arm + gripper; returns (Articulation, spec dict)."""
     UsdGeom.Xform.Define(stage, root)
     cube(root+'_Table', (*table_size, .10), (0, 0, table_height-.05), (.45, .38, .27))
@@ -56,7 +56,8 @@ def build_nova5_2f85(stage, root='/World/Robot', *, table_height=.70, table_size
     fix.CreateLocalPos0Attr(Gf.Vec3f(0, 0, table_height))
     UsdPhysics.ArticulationRootAPI.Apply(stage.GetPrimAtPath(base_path))
     gripper = attach_robotiq(stage, root, str(bodies[FLANGE].GetPath()), tactile=tactile,
-                             pad_stiffness=pad_stiffness, pad_damping=pad_damping)
+                             pad_stiffness=pad_stiffness, pad_damping=pad_damping,
+                             pad_colliders=pad_colliders, taxel_grid=taxel_grid)
     props = PhysxSchema.PhysxArticulationAPI.Apply(stage.GetPrimAtPath(base_path))
     props.CreateEnabledSelfCollisionsAttr(False)
     props.CreateSolverPositionIterationCountAttr(16); props.CreateSolverVelocityIterationCountAttr(4)
@@ -82,7 +83,7 @@ def build_nova5_2f85(stage, root='/World/Robot', *, table_height=.70, table_size
                    'arm_effort_limits_nm': ARM_EFFORT_NM, 'gripper': gripper}
 
 
-def spawn_sdf_box(stage, path, size, position, *, mass=.05, color=(.9, .025, .015), sdf_resolution=128):
+def spawn_sdf_box(stage, path, size, position, *, mass=.05, color=(.9, .025, .015), sdf_resolution=128, approximation='sdf'):
     """Dynamic box with an SDF triangle-mesh collider (TacSL force field needs an SDF)."""
     pts, tris = box(size)
     body = UsdGeom.Xform.Define(stage, path)
@@ -96,8 +97,9 @@ def spawn_sdf_box(stage, path, size, position, *, mass=.05, color=(.9, .025, .01
     mesh = triangle_mesh(stage, path+'/geometry', pts, tris)
     UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(preview_material(stage, path+'/Look', color))
     UsdPhysics.CollisionAPI.Apply(mesh.GetPrim())
-    UsdPhysics.MeshCollisionAPI.Apply(mesh.GetPrim()).CreateApproximationAttr('sdf')
-    PhysxSchema.PhysxSDFMeshCollisionAPI.Apply(mesh.GetPrim()).CreateSdfResolutionAttr(int(sdf_resolution))
+    UsdPhysics.MeshCollisionAPI.Apply(mesh.GetPrim()).CreateApproximationAttr(approximation)
+    if approximation == 'sdf':
+        PhysxSchema.PhysxSDFMeshCollisionAPI.Apply(mesh.GetPrim()).CreateSdfResolutionAttr(int(sdf_resolution))
     api = PhysxSchema.PhysxCollisionAPI.Apply(mesh.GetPrim())
     api.CreateContactOffsetAttr(.001); api.CreateRestOffsetAttr(0.)
     material = UsdShade.Material.Define(stage, path+'/PhysicsMaterial')

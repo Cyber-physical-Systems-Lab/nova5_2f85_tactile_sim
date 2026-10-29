@@ -56,13 +56,9 @@ def triangle_mesh(stage, path, points, triangles):
     return mesh
 
 
-def attach_tactile_pads(stage, grip_root, poses, pad_stiffness, pad_damping):
-    """One rigid elastomer body per fingertip, fixed to its inner finger.
-
-    The visual mesh is the first non-collision mesh under the body, which is
-    what TacSL ray-casts to place taxels. Points are in the body frame.
-    """
-    material = UsdShade.Material.Define(stage, grip_root+'/PadMaterial')
+def pad_materials(stage, root, pad_stiffness, pad_damping):
+    """(physics material, look) shared by all pads under root."""
+    material = UsdShade.Material.Define(stage, root+'/PadMaterial')
     physics = UsdPhysics.MaterialAPI.Apply(material.GetPrim())
     physics.CreateStaticFrictionAttr(1.2); physics.CreateDynamicFrictionAttr(1.0); physics.CreateRestitutionAttr(0.)
     if pad_stiffness:
@@ -70,39 +66,65 @@ def attach_tactile_pads(stage, grip_root, poses, pad_stiffness, pad_damping):
         api = PhysxSchema.PhysxMaterialAPI.Apply(material.GetPrim())
         api.CreateCompliantContactStiffnessAttr(float(pad_stiffness))
         api.CreateCompliantContactDampingAttr(float(pad_damping))
-    look = preview_material(stage, grip_root+'/PadLook', (.85, .55, .10), .8)
+    return material, preview_material(stage, root+'/PadLook', (.85, .55, .10), .8)
+
+
+def make_pad(stage, path, pose, material, look, colliders='taxels', grid=(6, 9), kinematic=False):
+    """Elastomer rigid body at `pose` (4x4, parent frame). Returns {collider path: [r, c] | None}.
+
+    The visual mesh is the first non-collision mesh under the body, which is
+    what TacSL ray-casts to place its taxels. With colliders='taxels' the
+    contact face is tiled by rows x cols box colliders so every PhysX contact
+    is attributed to one taxel; 'single' uses one convex hull of the pad.
+    """
+    body = UsdGeom.Xform.Define(stage, path)
+    body.AddTransformOp().Set(Gf.Matrix4d(np.asarray(pose).T.tolist()))
+    UsdPhysics.RigidBodyAPI.Apply(body.GetPrim()).CreateKinematicEnabledAttr(bool(kinematic))
+    PhysxSchema.PhysxContactReportAPI.Apply(body.GetPrim()).CreateThresholdAttr(0.)
+    mass = UsdPhysics.MassAPI.Apply(body.GetPrim())
+    mass.CreateMassAttr(.002)
+    mass.CreateCenterOfMassAttr(Gf.Vec3f(0., 0., -pad_geometry.THICKNESS/2))
+    mass.CreateDiagonalInertiaAttr(Gf.Vec3f(2e-7, 1e-7, 2e-7))
     points, triangles = pad_geometry.frustum()
+    visual = triangle_mesh(stage, path+'/elastomer_visual', points, triangles)
+    UsdShade.MaterialBindingAPI.Apply(visual.GetPrim()).Bind(look)
+    shapes = {}
+    if colliders == 'taxels':
+        for (r, c), (pts, tris) in pad_geometry.taxel_boxes(grid):
+            shapes[f'{path}/taxel_{r:02d}_{c:02d}'] = ([r, c], pts, tris)
+    elif colliders == 'single':
+        shapes[path+'/elastomer_collision'] = (None, points, triangles)
+    else:
+        raise ValueError(f'colliders must be taxels or single, got {colliders!r}')
+    for cpath, (rc, pts, tris) in shapes.items():
+        mesh = triangle_mesh(stage, cpath, pts, tris)
+        UsdGeom.Imageable(mesh).MakeInvisible()
+        UsdPhysics.CollisionAPI.Apply(mesh.GetPrim())
+        UsdPhysics.MeshCollisionAPI.Apply(mesh.GetPrim()).CreateApproximationAttr('convexHull')
+        api = PhysxSchema.PhysxCollisionAPI.Apply(mesh.GetPrim())
+        api.CreateContactOffsetAttr(.001); api.CreateRestOffsetAttr(0.)
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material, materialPurpose='physics')
+    UsdGeom.Xform.Define(stage, path+'/tactile_sensor')  # TacSL sensor prim (parent = elastomer body)
+    return {cpath: rc for cpath, (rc, _, _) in shapes.items()}
+
+
+def attach_tactile_pads(stage, grip_root, poses, pad_stiffness, pad_damping, colliders='taxels', grid=(6, 9)):
+    """One elastomer body per fingertip, fixed to its inner finger."""
+    material, look = pad_materials(stage, grip_root, pad_stiffness, pad_damping)
+    local = pad_geometry.finger_to_pad()
     pads = {}
     for side, finger in FINGER_TIPS.items():
         path = f'{grip_root}/{side}_tactile_pad'
-        pose = poses[finger]@pad_geometry.finger_to_pad()
-        body = UsdGeom.Xform.Define(stage, path)
-        body.AddTransformOp().Set(Gf.Matrix4d(pose.T.tolist()))
-        UsdPhysics.RigidBodyAPI.Apply(body.GetPrim())
-        PhysxSchema.PhysxContactReportAPI.Apply(body.GetPrim()).CreateThresholdAttr(0.)
-        mass = UsdPhysics.MassAPI.Apply(body.GetPrim())
-        mass.CreateMassAttr(.002)
-        mass.CreateCenterOfMassAttr(Gf.Vec3f(0., 0., -pad_geometry.THICKNESS/2))
-        mass.CreateDiagonalInertiaAttr(Gf.Vec3f(2e-7, 1e-7, 2e-7))
-        visual = triangle_mesh(stage, path+'/elastomer_visual', points, triangles)
-        UsdShade.MaterialBindingAPI.Apply(visual.GetPrim()).Bind(look)
-        collision = triangle_mesh(stage, path+'/elastomer_collision', points, triangles)
-        UsdGeom.Imageable(collision).MakeInvisible()
-        UsdPhysics.CollisionAPI.Apply(collision.GetPrim())
-        UsdPhysics.MeshCollisionAPI.Apply(collision.GetPrim()).CreateApproximationAttr('convexHull')
-        api = PhysxSchema.PhysxCollisionAPI.Apply(collision.GetPrim())
-        api.CreateContactOffsetAttr(.001); api.CreateRestOffsetAttr(0.)
-        UsdShade.MaterialBindingAPI.Apply(collision.GetPrim()).Bind(material, materialPurpose='physics')
-        UsdGeom.Xform.Define(stage, path+'/tactile_sensor')  # TacSL sensor prim (parent = elastomer body)
+        shapes = make_pad(stage, path, poses[finger]@local, material, look, colliders, grid)
         fix = UsdPhysics.FixedJoint.Define(stage, path+'_mount')
         fix.CreateBody0Rel().SetTargets([f'{grip_root}/{finger}']); fix.CreateBody1Rel().SetTargets([path])
-        local = pad_geometry.finger_to_pad()
         fix.CreateLocalPos0Attr(Gf.Vec3f(*map(float, local[:3, 3]))); fix.CreateLocalRot0Attr(quat(local[:3, :3]))
-        pads[side] = path
+        pads[side] = {'body': path, 'colliders': shapes}
     return pads
 
 
-def attach_robotiq(stage, root, flange_path, *, tactile=True, pad_stiffness=1e4, pad_damping=20.):
+def attach_robotiq(stage, root, flange_path, *, tactile=True, pad_stiffness=1e4, pad_damping=20.,
+                   pad_colliders='taxels', taxel_grid=(6, 9)):
     doc = ET.parse(GRIPPER_URDF).getroot()
     links = {e.get('name'): e for e in doc.findall('link')}
     joints = doc.findall('joint')
@@ -181,10 +203,10 @@ def attach_robotiq(stage, root, flange_path, *, tactile=True, pad_stiffness=1e4,
                 api.CreateGearingAttr(-mult); api.CreateOffsetAttr(0.)
         joint.CreateLocalPos0Attr(Gf.Vec3f(*map(float, o[:3, 3])))
         joint.CreateLocalRot0Attr(quat(o[:3, :3]@align)); joint.CreateLocalRot1Attr(quat(align))
-    pads = attach_tactile_pads(stage, grip_root, poses, pad_stiffness, pad_damping) if tactile else {}
+    pads = attach_tactile_pads(stage, grip_root, poses, pad_stiffness, pad_damping, pad_colliders, taxel_grid) if tactile else {}
     return {'model': 'robotiq_2f85', 'joint_names': names, 'multipliers': multipliers,
-            'contact_bodies': list(pads.values()) or [grip_root+'/'+f for f in FINGER_TIPS.values()],
-            'tactile_pads': pads,
+            'contact_bodies': [p['body'] for p in pads.values()] or [grip_root+'/'+f for f in FINGER_TIPS.values()],
+            'tactile_pads': pads, 'pad_colliders': pad_colliders if tactile else None,
             'pad_compliance': {'stiffness_n_per_m': pad_stiffness, 'damping': pad_damping} if tactile else None,
             # Tool point between the pad centres when closed (flange +z).
             'tool_offset_m': [0, 0, .145], 'source_sha256': hashes, 'limit_repairs': repairs,
