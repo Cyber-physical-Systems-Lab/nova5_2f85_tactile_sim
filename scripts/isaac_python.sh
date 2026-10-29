@@ -16,8 +16,16 @@ export CARB_APP_PATH="${ISAAC_PATH}/kit"
 export EXP_PATH="${ISAAC_PATH}/apps"
 export RESOURCE_NAME=IsaacSim
 source "${ISAAC_PATH}/setup_python_env.sh"
-# trimesh (needed by TacSL) ships in Isaac Sim's pip prebundle.
-export PYTHONPATH="${TASK_ROOT}:${ISAACLAB_PATH}/source/isaaclab:${PYTHONPATH:-}:${ISAAC_PATH}/exts/omni.pip.compute/pip_prebundle"
+# A few pure-Python packages missing from the env ship inside Isaac Sim extension prebundles:
+# trimesh (TacSL), google.protobuf and absl (TensorBoard logging). Link only those packages into
+# .pyshim/ instead of adding whole prebundles, which also carry their own numpy, PIL, etc.
+SHIM="${TASK_ROOT}/.pyshim"; mkdir -p "${SHIM}"
+for SRC in "${ISAAC_PATH}"/exts/omni.pip.compute/pip_prebundle/trimesh \
+           "${ISAAC_PATH}"/extscache/omni.cip.pip-*/pip_prebundle/google \
+           "${ISAAC_PATH}"/exts/isaacsim.pip.newton/pip_prebundle/absl; do
+    [[ -d "${SRC}" && ! -e "${SHIM}/$(basename "${SRC}")" ]] && ln -s "${SRC}" "${SHIM}/$(basename "${SRC}")"
+done
+export PYTHONPATH="${TASK_ROOT}:${ISAACLAB_PATH}/source/isaaclab:${PYTHONPATH:-}:${SHIM}"
 # Conda's ICU/SQLite needs a newer C++ ABI than Ubuntu 22.04's system library.
 export LD_PRELOAD="${CONDA_PREFIX}/lib/libstdc++.so.6:${ISAAC_PATH}/kit/libcarb.so${LD_PRELOAD:+:${LD_PRELOAD}}"
 export PYTHONNOUSERSITE=1

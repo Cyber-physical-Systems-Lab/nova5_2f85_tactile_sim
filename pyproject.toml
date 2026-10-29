@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nova5-tactile"
+version = "0.2.0"
+description = "Dobot NOVA5 + Robotiq 2F-85 in Isaac Sim / Isaac Lab: ManipulationNet peg-in-hole and fingertip tactile sensing"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["numpy", "scipy"]
+
+[tool.setuptools.packages.find]
+include = ["nova5_tactile*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
