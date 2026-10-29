@@ -49,3 +49,9 @@ def test_gripper_gap_monotonic_and_inverts():
     qs = np.linspace(0, gk.Q_MAX, 20); gaps = [gk.pad_gap(q) for q in qs]
     assert np.all(np.diff(gaps) < 0) and gaps[0] > .07
     assert gk.pad_gap(gk.q_for_gap(.012)) == pytest.approx(.012, abs=2e-4)
+
+
+def test_every_peg_fits_its_hole():
+    for name, hole in holes().items():
+        assert hole.min_gap_mm > .01, (name, hole.min_gap_mm)
+        assert hole.min_gap_mm <= hole.fit_gap_mm+1e-9

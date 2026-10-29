@@ -4,7 +4,7 @@
 set -e
 TASK_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 TASK_CONDA_ROOT="${TASK_CONDA_ROOT:-${HOME}/miniconda3}"
-TASK_CONDA_ENV="${TASK_CONDA_ENV:-locomanipu}"
+TASK_CONDA_ENV="${TASK_CONDA_ENV:-env_isaaclab}"  # the env made by IsaacLab/isaaclab.sh --conda
 source "${TASK_CONDA_ROOT}/etc/profile.d/conda.sh"
 # Re-activating the same environment can trip an inherited deactivation hook.
 if [[ "${CONDA_PREFIX:-}" != "${TASK_CONDA_ROOT}/envs/${TASK_CONDA_ENV}" ]]; then

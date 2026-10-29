@@ -129,10 +129,11 @@ class Hole:
     shape: str
     level: int
     polygon: np.ndarray     # (M, 2) metres, board frame (board centre, top face at z=BOARD_THICKNESS)
-    center: np.ndarray      # (2,) metres, board frame
-    yaw: float              # board-frame yaw that maps the peg polygon onto the hole
+    center: np.ndarray      # (2,) metres, board frame: where the peg centre goes when inserted
+    yaw: float              # board-frame peg yaw that fits the hole
     clearance_mm: float     # nominal (benchmark)
-    fit_gap_mm: float       # measured: mean hole-minus-peg gap from the CAD sections
+    fit_gap_mm: float       # measured: mean peg-to-wall gap at that pose, from the CAD sections
+    min_gap_mm: float       # measured: smallest peg-to-wall gap at that pose (> 0: the peg fits)
 
 
 def load_peg(shape):
@@ -172,8 +173,8 @@ def board_holes():
     holes = {}
     for name, (poly, c) in sorted(out.items()):
         peg = load_peg(name[0])
-        yaw, gap = match_yaw(peg.polygon, poly-c)
-        holes[name] = Hole(name[0], int(name[1]), poly, c, yaw, CLEARANCE_MM[int(name[1])], gap*1e3)
+        yaw, off, min_gap, mean_gap = match_pose(peg.polygon, poly-c)
+        holes[name] = Hole(name[0], int(name[1]), poly, c+off, yaw, CLEARANCE_MM[int(name[1])], mean_gap*1e3, min_gap*1e3)
     return holes
 
 
@@ -188,15 +189,32 @@ def _dist_to_polygon(pts, poly):
     return np.linalg.norm(pts[:, None]-(a[None]+t[..., None]*ab[None]), axis=-1).min(1)
 
 
-def match_yaw(peg_poly, hole_poly_centred):
-    """Yaw that best fits the peg outline inside the hole, and the mean gap (m) at that yaw."""
-    def cost(yaw):
-        return _dist_to_polygon(_resample(peg_poly)@_rot(yaw).T, hole_poly_centred).mean()
-    coarse = np.deg2rad(np.arange(0, 360, 1.))
-    y0 = coarse[int(np.argmin([cost(y) for y in coarse]))]
-    fine = y0+np.deg2rad(np.arange(-1, 1, .02))
-    y = fine[int(np.argmin([cost(f) for f in fine]))]
-    return float(np.arctan2(np.sin(y), np.cos(y))), float(cost(y))
+def _inside(pts, poly):
+    x, y = pts[:, 0], pts[:, 1]; res = np.zeros(len(pts), bool)
+    for a, b in zip(poly, np.roll(poly, -1, 0)):
+        res ^= ((a[1] > y) != (b[1] > y)) & (x < (b[0]-a[0])*(y-a[1])/(b[1]-a[1]+1e-30)+a[0])
+    return res
+
+
+def match_pose(peg_poly, hole_poly_centred):
+    """Peg yaw and centre offset that maximise the smallest peg-to-wall clearance inside the hole.
+
+    Returns (yaw, offset (2,), min gap m, mean gap m). A negative min gap means the peg cannot fit.
+    """
+    from scipy.optimize import minimize
+    pts = _resample(peg_poly, 240)
+    def clearance(x):
+        q = pts@_rot(x[0]).T+x[1:3]
+        d = _dist_to_polygon(q, hole_poly_centred)
+        return np.where(_inside(q, hole_poly_centred), d, -d)
+    coarse = np.deg2rad(np.arange(0, 360, .5))
+    scores = [clearance(np.r_[y, 0, 0]).min() for y in coarse]
+    x0 = np.r_[coarse[int(np.argmax(scores))], 0, 0]
+    res = minimize(lambda x: -clearance(x).min(), x0, method='Nelder-Mead',
+                   options={'xatol': 1e-7, 'fatol': 1e-9})
+    x = res.x if -res.fun >= max(scores) else x0
+    c = clearance(x)
+    return float(np.arctan2(np.sin(x[0]), np.cos(x[0]))), x[1:3], float(c.min()), float(np.abs(_dist_to_polygon(_resample(peg_poly)@_rot(x[0]).T+x[1:3], hole_poly_centred)).mean())
 
 
 def _resample(poly, n=400):

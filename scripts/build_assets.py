@@ -51,7 +51,7 @@ def main():
     for name, hole in pih.board_holes().items():
         n = usd_assets.write_board(OUT/f'board_{name}.usd', hole, 'board_visual.usd')
         meta['holes'][name] = {'center_m': hole.center.tolist(), 'yaw': hole.yaw, 'clearance_mm': hole.clearance_mm,
-                               'fit_gap_mm': hole.fit_gap_mm, 'colliders': n}
+                               'fit_gap_mm': hole.fit_gap_mm, 'min_gap_mm': hole.min_gap_mm, 'colliders': n}
         print('board', name, n, 'colliders, gap', round(hole.fit_gap_mm, 4), 'mm', flush=True)
     (OUT/'peg_in_hole.json').write_text(json.dumps(meta, indent=1)+'\n')
     return 0

@@ -4,7 +4,7 @@
   bash scripts/isaac_python.sh scripts/run_peg_in_hole.py --task A1 --num_envs 4 --headless --enable_cameras --screenshot docs/media/a1.png
 
 The scripted policy servos the peg over the hole (from the env's own
-observations), aligns its yaw, then pushes down. It is a sanity check and
+observations), turns the peg to the hole's yaw, then pushes down. It is a sanity check and
 baseline, not a benchmark result.
 """
 import argparse
@@ -29,12 +29,13 @@ from nova5_tactile.mnet.peg_in_hole_env_cfg import PegInHoleEnvCfg
 
 
 def scripted(obs, cfg):
-    peg = obs[:, 8:11]; s, c = obs[:, 3], obs[:, 4]
+    # Align the peg itself (it can turn in the hand), not the fingertip.
+    peg = obs[:, 8:11]; s, c = obs[:, 11], obs[:, 12]
     a = torch.zeros(len(obs), 4, device=obs.device)
     a[:, :2] = (-peg[:, :2]/cfg.pos_action_scale).clamp(-1, 1)
     yaw_err = torch.atan2(s, c)
     a[:, 3] = (-yaw_err/cfg.yaw_action_scale).clamp(-1, 1)
-    aligned = (peg[:, :2].norm(dim=-1) < .0015) & (yaw_err.abs() < .02)
+    aligned = (peg[:, :2].norm(dim=-1) < .0008) & (yaw_err.abs() < .005)
     a[:, 2] = torch.where(aligned, -.6, torch.where(peg[:, 2] < .004, .3, 0.))
     return a
 
@@ -79,6 +80,9 @@ def main():
                 Image.fromarray(img).save(args.screenshot)
             if step % 30 == 0 or step == u.max_episode_length-2:
                 peg = obs['policy'][:, 8:11]
+                if args.trace:
+                    o = obs['policy'][0]
+                    print('YAW tip_err_deg', round(float(torch.atan2(o[3], o[4]).rad2deg()), 2), 'peg_err_deg', round(float(torch.atan2(o[11], o[12]).rad2deg()), 2), flush=True)
                 print(f'EP {ep} step {step} reward {rew.mean():.3f} peg rel hole mm xy {peg[:, :2].norm(dim=-1).mean()*1e3:.2f} '
                       f'z {peg[:, 2].mean()*1e3:.1f} inserted {u.success.float().mean():.2f} ever {u.ever_success.float().mean():.2f}', flush=True)
         print('EPISODE', ep, 'success_rate', float(ever.float().mean()), 'non_finite_envs', int((~torch.isfinite(u._peg_state()[0]).all(-1)).sum()), flush=True)
