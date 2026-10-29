@@ -1,0 +1,255 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.2"
+    }
+    defaultPrim = "nova5_robot"
+    doc = """Generated from Composed Stage of root layer /tmp/tmptsd0pbj3/nova5_robot.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_nova5_df_kor4q/usdex_nova5/nova5_robot.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_nova5_df_kor4q/temp_nova5/nova5.usd
+
+
+Generated from Composed Stage of root layer /home/xuezhi/go2_mycobot_ral/data/assets/nova5_isaac/nova5/payloads/base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+over "nova5_robot"
+{
+    over "Geometry" (
+        prepend apiSchemas = ["PhysicsArticulationRootAPI", "NewtonArticulationRootAPI"]
+    )
+    {
+        bool newton:selfCollisionEnabled = 0
+
+        over "base_link" (
+            prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        )
+        {
+            point3f physics:centerOfMass = (0.000006566987, 0.0000027305216, 0.06982231)
+            float3 physics:diagonalInertia = (0.0023283532, 0.0030810917, 0.0030975875)
+            float physics:mass = 1.3106444
+            quatf physics:principalAxes = (0.5004345, 0.49921528, 0.5007885, 0.49956015)
+
+            over "Link1" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+            )
+            {
+                point3f physics:centerOfMass = (0.000009186427, -0.021770785, -0.026183398)
+                float3 physics:diagonalInertia = (0.0012806866, 0.0026596321, 0.0028401085)
+                float physics:mass = 1.0809094
+                quatf physics:principalAxes = (0.6093654, 0.35890153, 0.35879326, 0.6092051)
+
+                over "Link2" (
+                    prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+                )
+                {
+                    point3f physics:centerOfMass = (-0.19933811, -0.0069646346, 0.10920866)
+                    float3 physics:diagonalInertia = (0.0027579337, 0.06375113, 0.06432016)
+                    float physics:mass = 2.5458536
+                    quatf physics:principalAxes = (0.9998076, -0.00014323805, 0.008932539, -0.017461408)
+
+                    over "Link3" (
+                        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+                    )
+                    {
+                        point3f physics:centerOfMass = (-0.1523573, -0.005357169, 0.01989915)
+                        float3 physics:diagonalInertia = (0.0009808302, 0.023201276, 0.02359971)
+                        float physics:mass = 1.4074565
+                        quatf physics:principalAxes = (0.999847, -0.00027814004, -0.000985287, -0.017462451)
+
+                        over "Link4" (
+                            prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+                        )
+                        {
+                            point3f physics:centerOfMass = (-0.000006371121, -0.02275905, -0.020238169)
+                            float3 physics:diagonalInertia = (0.00025376934, 0.00063473865, 0.00067668606)
+                            float physics:mass = 0.43966627
+                            quatf physics:principalAxes = (-0.25866047, 0.6581094, 0.6579042, -0.25913092)
+
+                            over "Link5" (
+                                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+                            )
+                            {
+                                point3f physics:centerOfMass = (-0.0000012792589, 0.0019091159, -0.0076111867)
+                                float3 physics:diagonalInertia = (0.00034815745, 0.0006631769, 0.0006905199)
+                                float physics:mass = 0.5748351
+                                quatf physics:principalAxes = (0.13691413, 0.693706, 0.6937748, 0.13675888)
+
+                                over "Link6" (
+                                    prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+                                )
+                                {
+                                    point3f physics:centerOfMass = (0.0000015476173, 0.00015159852, -0.019459229)
+                                    float3 physics:diagonalInertia = (0.000050280312, 0.00005053998, 0.00007786311)
+                                    float physics:mass = 0.12967993
+                                    quatf physics:principalAxes = (0.9999996, 0.00092126697, 4.54792e-8, 0.00012076054)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    over "Physics"
+    {
+        def PhysicsRevoluteJoint "joint1" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.17453292
+            float drive:angular:physics:maxForce = 60
+            float drive:angular:physics:stiffness = 1.7453293
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot/Geometry/base_link>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link/Link1>
+            point3f physics:localPos0 = (0, 0, 0.24)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physics:lowerLimit = -359.8175
+            float physics:upperLimit = 359.8175
+            custom float urdf:limit:effort = 60
+            custom float urdf:limit:velocity = 1.5
+        }
+
+        def PhysicsRevoluteJoint "joint2" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.17453292
+            float drive:angular:physics:maxForce = 60
+            float drive:angular:physics:stiffness = 1.7453293
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot/Geometry/base_link/Link1>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link/Link1/Link2>
+            point3f physics:localPos0 = (0, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.49119326, 0.49119005, 0.5086575, -0.5086542)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physics:lowerLimit = -179.90875
+            float physics:upperLimit = 179.90875
+            custom float urdf:limit:effort = 60
+            custom float urdf:limit:velocity = 1.5
+        }
+
+        def PhysicsRevoluteJoint "joint3" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.17453292
+            float drive:angular:physics:maxForce = 60
+            float drive:angular:physics:stiffness = 1.7453293
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot/Geometry/base_link/Link1/Link2>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3>
+            point3f physics:localPos0 = (-0.399756, -0.013969003, 1.9852335e-23)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physics:lowerLimit = -159.85522
+            float physics:upperLimit = 159.85522
+            custom float urdf:limit:effort = 60
+            custom float urdf:limit:velocity = 1.5
+        }
+
+        def PhysicsRevoluteJoint "joint4" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.17453292
+            float drive:angular:physics:maxForce = 15
+            float drive:angular:physics:stiffness = 1.7453293
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3/Link4>
+            point3f physics:localPos0 = (-0.3297987, -0.011524428, 0.13499953)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.71934795, 7.973333e-17, -1.110223e-16, -0.69464993)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physics:lowerLimit = -359.8175
+            float physics:upperLimit = 359.8175
+            custom float urdf:limit:effort = 15
+            custom float urdf:limit:velocity = 1.5
+        }
+
+        def PhysicsRevoluteJoint "joint5" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.17453292
+            float drive:angular:physics:maxForce = 15
+            float drive:angular:physics:stiffness = 1.7453293
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3/Link4>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3/Link4/Link5>
+            point3f physics:localPos0 = (-1.5881868e-22, -0.12, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (-0.70710546, -0.7071081, -3.293264e-18, 1.2270605e-16)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physics:lowerLimit = -359.8175
+            float physics:upperLimit = 359.8175
+            custom float urdf:limit:effort = 15
+            custom float urdf:limit:velocity = 1.5
+        }
+
+        def PhysicsRevoluteJoint "joint6" (
+            prepend apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.17453292
+            float drive:angular:physics:maxForce = 15
+            float drive:angular:physics:stiffness = 1.7453293
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "Z"
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3/Link4/Link5>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link/Link1/Link2/Link3/Link4/Link5/Link6>
+            point3f physics:localPos0 = (2.646978e-22, 0.088328, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (-0.70710546, 0.7071081, -1.633249e-17, 9.933902e-17)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physics:lowerLimit = -359.8175
+            float physics:upperLimit = 359.8175
+            custom float urdf:limit:effort = 15
+            custom float urdf:limit:velocity = 1.5
+        }
+
+        def PhysicsFixedJoint "root_joint"
+        {
+            custom rel physics:body0
+            prepend rel physics:body0 = </nova5_robot>
+            custom rel physics:body1
+            prepend rel physics:body1 = </nova5_robot/Geometry/base_link>
+            point3f physics:localPos0 = (0, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+    }
+}
+

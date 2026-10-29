@@ -1,0 +1,231 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.2"
+    }
+    defaultPrim = "nova5_robot"
+    doc = """Generated from Composed Stage of root layer /tmp/tmptsd0pbj3/nova5_robot.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_nova5_df_kor4q/usdex_nova5/nova5_robot.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_nova5_df_kor4q/temp_nova5/nova5.usd
+
+
+Generated from Composed Stage of root layer /home/xuezhi/go2_mycobot_ral/data/assets/nova5_isaac/nova5/payloads/base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./physics.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "nova5_robot"
+{
+    over "Physics"
+    {
+        def MjcActuator "joint1_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, -1.7453292608261108, -0.1745329201221466, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 60
+            uniform double mjc:forceRange:min = -60
+            uniform double[] mjc:gainPrm = [1.7453292608261108, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </nova5_robot/Physics/joint1>
+        }
+
+        def MjcActuator "joint2_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, -1.7453292608261108, -0.1745329201221466, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 60
+            uniform double mjc:forceRange:min = -60
+            uniform double[] mjc:gainPrm = [1.7453292608261108, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </nova5_robot/Physics/joint2>
+        }
+
+        def MjcActuator "joint3_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, -1.7453292608261108, -0.1745329201221466, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 60
+            uniform double mjc:forceRange:min = -60
+            uniform double[] mjc:gainPrm = [1.7453292608261108, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </nova5_robot/Physics/joint3>
+        }
+
+        def MjcActuator "joint4_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, -1.7453292608261108, -0.1745329201221466, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 15
+            uniform double mjc:forceRange:min = -15
+            uniform double[] mjc:gainPrm = [1.7453292608261108, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </nova5_robot/Physics/joint4>
+        }
+
+        def MjcActuator "joint5_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, -1.7453292608261108, -0.1745329201221466, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 15
+            uniform double mjc:forceRange:min = -15
+            uniform double[] mjc:gainPrm = [1.7453292608261108, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </nova5_robot/Physics/joint5>
+        }
+
+        def MjcActuator "joint6_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, -1.7453292608261108, -0.1745329201221466, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 15
+            uniform double mjc:forceRange:min = -15
+            uniform double[] mjc:gainPrm = [1.7453292608261108, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </nova5_robot/Physics/joint6>
+        }
+
+        over "joint1" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+        }
+
+        over "root_joint"
+        {
+        }
+
+        over "joint2" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+        }
+
+        over "joint3" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+        }
+
+        over "joint4" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+        }
+
+        over "joint5" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+        }
+
+        over "joint6" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+        }
+    }
+
+    over "Geometry"
+    {
+        over "base_link"
+        {
+            over "Link1"
+            {
+                over "Link2"
+                {
+                    over "Link3"
+                    {
+                        over "Link4"
+                        {
+                            over "Link5"
+                            {
+                                over "Link6"
+                                {
+                                    over "Link6"
+                                    {
+                                    }
+
+                                    over "Link6_1"
+                                    {
+                                    }
+                                }
+
+                                over "Link5"
+                                {
+                                }
+
+                                over "Link5_1"
+                                {
+                                }
+                            }
+
+                            over "Link4"
+                            {
+                            }
+
+                            over "Link4_1"
+                            {
+                            }
+                        }
+
+                        over "Link3"
+                        {
+                        }
+
+                        over "Link3_1"
+                        {
+                        }
+                    }
+
+                    over "Link2"
+                    {
+                    }
+
+                    over "Link2_1"
+                    {
+                    }
+                }
+
+                over "Link1"
+                {
+                }
+
+                over "Link1_1"
+                {
+                }
+            }
+
+            over "base_link"
+            {
+            }
+
+            over "base_link_1"
+            {
+            }
+        }
+    }
+
+    over "Materials"
+    {
+    }
+
+    over "VisualMaterials"
+    {
+    }
+}
+
