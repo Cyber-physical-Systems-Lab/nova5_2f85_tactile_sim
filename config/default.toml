@@ -1,0 +1,100 @@
+# Nova5 + Robotiq 2F-85 + fingertip tactile pads — default configuration.
+# Units: metres, kilograms, seconds, newtons, degrees where the key says _deg.
+# Override any value on the command line:  --set tactile.rows=16
+
+[sim]
+physics_hz = 240.0
+gravity = [0.0, 0.0, -9.81]
+headless = false
+
+[paths]
+# Repo-relative paths (absolute paths also accepted).
+nova5_urdf = "assets/urdf/nova5.urdf"          # written by scripts/prepare_urdf.py
+nova5_usd_dir = "assets/usd/nova5"             # output folder of scripts/import_nova5.py
+assembled_usd = "assets/usd/nova5_2f85_tactile.usd"
+
+# Robotiq 2F-85 USD. If 'gripper_usd' is set (local path, http(s):// or omniverse://)
+# it wins; otherwise the candidates are tried relative to the Isaac Sim assets root
+# (isaacsim.storage.native.get_assets_root_path()). Asset paths move between
+# Isaac Sim releases — run scripts/inspect_usd.py or check the "Robot Assets" docs page.
+gripper_usd = ""
+gripper_usd_candidates = [
+  "/Isaac/Robots/Robotiq/2F-85/Robotiq_2F_85_edit.usd",
+  "/Isaac/Robots/Robotiq/2F-85/Robotiq_2F_85.usd",
+  "/Isaac/Robots_Multiphysics/Robotiq/2F-85/Robotiq_2F_85.usd",
+]
+
+[arm]
+# Dobot URDFs normally use Link1..Link6 / joint1..joint6. Verify with inspect_usd.py.
+flange_link_candidates = ["Link6", "link6", "tool0", "flange"]
+joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+# Demo "home" pose. Placeholder: pick a pose that points the tool down in your cell.
+home_deg = [0.0, 0.0, 90.0, 0.0, -90.0, 0.0]
+# Override USD joint-drive gains for the arm (USD angular units: N·m/deg, N·m·s/deg).
+# Negative = keep what the URDF importer authored.
+drive_stiffness = -1.0
+drive_damping = -1.0
+
+[gripper]
+base_link_candidates = ["robotiq_base_link", "base_link", "robotiq_arg2f_base_link"]
+drive_joint = "finger_joint"
+open_deg = 0.0
+close_deg = 45.0
+# Flange -> gripper-base mount transform (adapter plate / coupling offset).
+mount_xyz = [0.0, 0.0, 0.0]
+mount_rpy_deg = [0.0, 0.0, 0.0]
+# Deactivate joints in the gripper asset that pin it to the world.
+remove_world_joints = true
+
+[tactile]
+# "taxel_colliders": every taxel is its own box collider (true spatial resolution).
+# "single_collider": one box per pad, contacts are binned by position.
+pad_mode = "taxel_colliders"
+rows = 8            # along the finger (pad +X, towards the tip)
+cols = 4            # across the finger (pad +Y)
+size_x = 0.030      # sensing area [m] — measure your real sensor / the 2F-85 pad
+size_y = 0.016
+thickness = 0.002
+protrusion = 0.0005 # how far the pad surface sits proud of the finger surface
+tip_margin = 0.002  # gap between pad distal edge and fingertip end (auto placement)
+# Position binning (used for single_collider, and as fallback): nearest|bilinear|gaussian
+spread_mode = "nearest"
+spread_sigma = 0.0          # [m], required > 0 for "gaussian"
+contact_z_tolerance = 0.003 # accept contacts within this distance of the pad surface
+# Pad physics material (PhysX compliant contact = soft elastomer approximation; 0 = rigid)
+compliant_stiffness = 2.0e4 # [N/m]
+compliant_damping = 50.0    # [N·s/m]
+static_friction = 1.0
+dynamic_friction = 0.8
+restitution = 0.0
+# Sensor non-idealities (all off by default = ideal sensor)
+noise_std = 0.0
+deadband = 0.0
+saturation = 0.0
+quantization = 0.0
+
+[tactile.left]
+name = "left"
+# First name that matches a rigid body inside the gripper asset wins.
+link_candidates = ["left_inner_finger_pad", "left_inner_finger"]
+auto_place = true
+# Used when auto_place = false: pad frame expressed in the finger-link frame.
+pad_xyz = [0.0, 0.0, 0.0]
+pad_rpy_deg = [0.0, 0.0, 0.0]
+
+[tactile.right]
+name = "right"
+link_candidates = ["right_inner_finger_pad", "right_inner_finger"]
+auto_place = true
+pad_xyz = [0.0, 0.0, 0.0]
+pad_rpy_deg = [0.0, 0.0, 0.0]
+
+[demo]
+robot_prim = "/World/robot"
+object_size = 0.04   # cube edge [m]; 2F-85 opens to 85 mm
+object_mass = 0.1
+settle_s = 1.5
+close_s = 1.0
+hold_s = 2.0
+print_every = 30     # print ASCII taxel maps every N frames
+live_colors = true   # colour taxels in the viewport by load

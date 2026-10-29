@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Generated assets (reproducible with `make urdf import assemble`).
+# The prepared URDF contains machine-specific absolute mesh paths.
+assets/urdf/*.urdf
+assets/usd/nova5/
+assets/usd/*.usd
+assets/usd/*.usda
+assets/usd/*.usdc
+assets/usd/*.meta.json
+
+# Third-party clones and run outputs
+third_party/
+logs/
+*.npz
+*.png
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

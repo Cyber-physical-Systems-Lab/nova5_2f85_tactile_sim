@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nova5-tactile"
+version = "0.1.0"
+description = "Dobot Nova5 + Robotiq 2F-85 with fingertip taxel sensors for NVIDIA Isaac Sim"
+readme = "README.md"
+requires-python = ">=3.11"          # tomllib; Isaac Sim 6.x bundles Python 3.12
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "matplotlib", "xacro"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
