@@ -1,18 +1,22 @@
 # nova5_2f85_tactile_sim
 
-Simulation of a **Dobot NOVA5** robot arm with a **Robotiq 2F-85** gripper in
-**NVIDIA Isaac Sim**, set up for the
+Simulation of a **Dobot NOVA5** robot arm with the CPS lab's **tactile gripper**
+(a rack-and-pinion parallel gripper whose fingers are Daimon vision-based tactile
+sensors, from [master-thesis-tactile-gripper](https://github.com/Cyber-physical-Systems-Lab/master-thesis-tactile-gripper))
+in **NVIDIA Isaac Sim**, set up for the
 **[ManipulationNet](https://manipulation-net.org) Peg-in-Hole** benchmark task
 (NIST ATB M1 task board and steel pegs), with **Isaac Lab** environments for
-reinforcement learning (RL). Fingertip tactile sensing is included as work in
-progress.
+reinforcement learning (RL). A Robotiq 2F-85 is kept as an alternative gripper.
+Tactile signals are work in progress.
 
-![NOVA5 + 2F-85 inserting the ManipulationNet cylinder peg (task A1)](docs/media/peg_in_hole_A1.png)
+![NOVA5 + CPS tactile gripper inserting the ManipulationNet cylinder peg (task A1)](docs/media/peg_in_hole_A1.png)
+
+![Close-up: the two Daimon sensor fingers holding the triangular peg above its hole (task C2)](docs/media/cps_gripper_closeup.png)
 
 **Contents:** [What you get](#what-you-get) ·
 [1. Requirements](#1-requirements) · [2. Install](#2-install-from-scratch) ·
 [3. First run](#3-first-run) · [4. Train with RL](#4-train-a-policy-with-rl) · [Results](#results-so-far) ·
-[5. The task in detail](#5-the-task-in-detail) · [6. Repository layout](#6-repository-layout) ·
+[5. The task in detail](#5-the-task-in-detail) · [The gripper model](#the-gripper-model) · [6. Repository layout](#6-repository-layout) ·
 [7. Troubleshooting](#7-troubleshooting) · [Tactile](#tactile-work-in-progress) ·
 [Limitations](#limitations) · [Credits](#credits-and-licences)
 
@@ -22,9 +26,11 @@ progress.
 
 | | |
 |---|---|
-| Robot | NOVA5 (Dobot's ROS 2 description) on a 0.70 m pedestal, with a Robotiq 2F-85 built from its URDF CAD: 6 finger joints coupled by PhysX mimic joints, one driven joint `finger_joint` (0–0.725 rad) |
+| Robot | NOVA5 (Dobot's ROS 2 description) on a 0.70 m pedestal |
+| Gripper (default) | CPS-lab tactile gripper, built from its CAD: two Daimon DM-Tac WL sensors as fingers on rack-driven carriages, coupled so they close symmetrically; 0–59.5 mm opening, 15 N grip. See [The gripper model](#the-gripper-model) |
+| Gripper (alternative) | Robotiq 2F-85 from its URDF CAD (task names ending in `-2F85-v0`) |
 | Benchmark | ManipulationNet Peg-in-Hole: the official board and peg CAD, 5 peg shapes (**A** circle, **B** hexagon, **C** triangle, **D** rectangle, **E** L-shape) × 4 clearance levels (**1** 3 mm, **2** 1 mm, **3** 0.1 mm, **4** 0.02 mm) = 20 sub-tasks, named like the benchmark (`A1` … `E4`) |
-| RL environments | 20 Isaac Lab tasks `Nova5-MNet-PegInHole-A1-v0` … `-E4-v0`, many robots in parallel on one GPU, PPO training with RSL-RL |
+| RL environments | 20 Isaac Lab tasks `Nova5-MNet-PegInHole-A1-v0` … `-E4-v0` (tactile gripper) plus `…-A1-2F85-v0` … (2F-85), many robots in parallel on one GPU, PPO training with RSL-RL |
 | Tools | scripted baseline, screenshot capture, asset builder, unit tests |
 
 ## 1. Requirements
@@ -117,16 +123,30 @@ export TASK_CONDA_ROOT=~/miniconda3     # conda installation
 export TASK_CONDA_ENV=env_isaaclab      # conda env made by isaaclab.sh
 ```
 
-### 2.6 Build the simulation assets (once, ~1–2 min)
+### 2.6 Build the simulation assets (once, ~3 min)
+
+You also need Daimon's STEP model of the **DM-Tac WL** sensor (the gripper's
+fingers). It is a vendor file and not part of this repo: get the
+`DM-Tac-W-STEP-…` package from Daimon (or from the lab) and point to it:
 
 ```bash
-bash scripts/isaac_python.sh scripts/build_assets.py
+DAIMON_STEP="$HOME/Downloads/DM-Tac-W-STEP-20250417/DM-Tac WL.STEP" bash scripts/setup_assets.sh
 ```
 
-This writes `assets/generated/` (not in git): the robot as one articulation,
-the five pegs, the board, one board per target hole with its collision
-geometry, and `peg_in_hole.json` with hole positions and measured clearances.
-Run it again after pulling changes to `nova5_tactile/`.
+Without `DAIMON_STEP` the fingers are plain boxes of about the same size. This needs internet access once. It:
+
+1. clones the tactile gripper's CAD repository into `third_party/tactile_gripper`
+   (pinned commit; not copied into this repo) and copies the sensor STEP into
+   `third_party/daimon/`,
+2. converts the gripper's Solid Edge assembly, its STEP parts and the sensor STEP
+   to USD with Isaac Sim's built-in CAD converter (`scripts/convert_gripper_cad.py`),
+3. builds `assets/generated/` (`scripts/build_assets.py`): both robots as single
+   articulations, the five pegs, the board, one board per target hole with its
+   collision geometry, and `peg_in_hole.json` with hole positions, measured
+   clearances and gripper data.
+
+Run `bash scripts/isaac_python.sh scripts/build_assets.py` again after pulling
+changes to `nova5_tactile/`. Neither `third_party/` nor `assets/generated/` is in git.
 
 ### 2.7 Check the install
 
@@ -153,9 +173,10 @@ bash scripts/isaac_python.sh scripts/run_peg_in_hole.py --task A1 --num_envs 4 -
     --enable_cameras --screenshot docs/media/peg_in_hole_A1.png
 ```
 
-`run_peg_in_hole.py` options: `--task` (A1…E4), `--num_envs`, `--episodes`,
-`--policy scripted|zero`, `--screenshot FILE` with `--screenshot_step N`,
-`--trace N` (print env 0 state for N steps). The scripted policy centres the
+`run_peg_in_hole.py` options: `--task` (A1…E4), `--gripper cps_tactile|robotiq_2f85`,
+`--num_envs`, `--episodes`, `--policy scripted|zero`, `--screenshot FILE` with
+`--screenshot_step N` and optional `--eye X Y Z --lookat X Y Z` (camera relative
+to the hole), `--trace N` (print env 0 state for N steps). The scripted policy centres the
 peg over the hole from the observations, aligns its yaw and pushes down. It is
 a sanity check and baseline, not a benchmark result.
 
@@ -178,6 +199,7 @@ bash scripts/isaac_python.sh scripts/play.py --rl_library rsl_rl \
     --task Nova5-MNet-PegInHole-A1-v0 --num_envs 16
 ```
 
+For the Robotiq 2F-85 use the `-2F85-` task names, e.g. `Nova5-MNet-PegInHole-A1-2F85-v0`.
 Checkpoints are saved in `logs/rsl_rl/mnet_peg_in_hole/<date-time>/model_<iteration>.pt`;
 `play.py` loads the newest one (or pass `--checkpoint PATH`). Watch
 `Metrics/success_rate` (fraction of envs that inserted the peg during an
@@ -189,25 +211,28 @@ You can also call Isaac Lab directly:
 
 ## Results so far
 
-Measured on an RTX A4500 (2026-10-29). Success = peg inserted ≥ 20 mm during the episode.
+Success = peg inserted ≥ 20 mm during the episode. RTX A4500.
 
-**Scripted baseline** (`run_peg_in_hole.py`, 16 envs, 1 episode per sub-task):
+**Scripted baseline** (`run_peg_in_hole.py`, 16 envs, 1 episode per sub-task),
+CPS tactile gripper with DM-Tac WL fingers (2026-11-05):
 
 | Shape \ level | 1 (3 mm) | 2 (1 mm) | 3 (0.1 mm) | 4 (0.02 mm) |
 |---|---|---|---|---|
-| A circle | 100 % | 88 % | 56 % | 0 % |
+| A circle | 100 % | 88 % | 81 % | 0 % |
 | B hexagon | 100 % | 100 % | 0 % | 0 % |
-| C triangle | 100 % | 100 % | 0 % | 0 % |
+| C triangle | 100 % | 100 % | 94 % | 0 % |
 | D rectangle | 100 % | 100 % | 0 % | 0 % |
-| E L-shape | 100 % | 0 % | 0 % | 0 % |
+| E L-shape | 94 % | 0 % | 0 % | 0 % |
 
-Expected benchmark score of the script: about 10.4 of 20 points. It aligns,
-then pushes straight down; at sub-millimetre clearances it jams or cannot
-correct the last few tenths of a millimetre, which is what the tight levels
-are meant to test.
+Expected benchmark score of the script: about 11.6 of 20 points (with the
+Robotiq 2F-85 on 2026-10-29: about 10.4). It aligns, then pushes straight
+down; at sub-millimetre clearances it jams or cannot correct the last few
+tenths of a millimetre, which is what the tight levels are meant to test.
 
-**RL (PPO, RSL-RL)** on C2 (triangle, 1 mm), 256 envs, 200 iterations, 88 min:
-success rate during training 0 % → 54 % (iteration 60) → 97 % (100) → 96–99 % (180–200).
+**RL (PPO, RSL-RL)** on C2 (triangle, 1 mm), 256 envs, 200 iterations:
+success rate during training with the CPS tactile gripper 0 % → 20 % (iteration 60)
+→ 70 % (100) → 95 % (140) → 99.6 % (195–200), 81 min (2026-11-05). With the
+Robotiq 2F-85 (2026-10-29): 54 % at iteration 60, 97 % at 100, 96–99 % at 180–200.
 Command as in section 4 with `--task Nova5-MNet-PegInHole-C2-v0 --max_iterations 200`.
 
 ## 5. The task in detail
@@ -240,6 +265,34 @@ sub-tasks in a fixed order within 3 hours, scoring 1 point per inserted peg.
 Here each sub-task is a separate environment that starts with the peg in the
 hand; picking, the task sequence and the time limit are not simulated.
 
+## The gripper model
+
+Built by `nova5_tactile/grippers/cps_tactile.py` from the thesis CAD
+(commit `783f026`):
+
+- **From the CAD:** the assembly's part placements (Solid Edge `.asm`), the
+  geometry of every part with a STEP export (mounting disk, cylinder frame,
+  base plate, pinion, both brick-and-rack carriages and their level plates), and
+  the Daimon DM-Tac WL sensor from Daimon's STEP (39 × 65.3 × 33.9 mm, gel
+  window 33 × 40 mm). Guide rods are drawn as 8 mm cylinders.
+- **Mechanism:** each carriage with its level plate and sensor is one rigid
+  finger on a prismatic joint along the closing axis; a mimic joint couples the
+  two (the pinion's rack-and-pinion constraint), so they always move
+  symmetrically. Opening 59.5 mm (fully open) to 0; 39.5 mm at the CAD pose.
+- **Assumed:** how the sensor sits on its carriage. The thesis CAD's own sensor
+  part is not readable on Linux, so the vendor model is mounted by rule: cable
+  end against the level plate, centred on the carriage, gel face 3.5 mm inboard
+  of the CAD sensor origin (matches the thesis renders). The finger collision is
+  the sensor's bounding box with the gel plane as its inner face. Gel friction
+  1.0–1.2, 15 N closing force (40 N limit), 10 mm extra opening travel. The two
+  level plates in the CAD put the fingertips 5 mm apart in height; the model
+  keeps that.
+- **Derived:** contact-face midpoint 159 mm from the robot flange; lower
+  fingertip 24.9 mm below it, so the peg is held with its top level with the gel
+  centres to leave 25 mm for full insertion.
+- **Change it:** `FACE_INBOARD` and `OPEN_TRAVEL` in `cps_tactile.py`, the grip
+  force in `grippers/__init__.py`, then rerun `scripts/build_assets.py`.
+
 ## 6. Repository layout
 
 | Path | Contents |
@@ -248,11 +301,15 @@ hand; picking, the task sequence and the time limit are not simulated.
 | `nova5_tactile/mnet/usd_assets.py` | Writes the peg and board USD files |
 | `nova5_tactile/mnet/peg_in_hole_env.py`, `peg_in_hole_env_cfg.py` | Isaac Lab environment and its settings |
 | `nova5_tactile/mnet/agents/rsl_rl_ppo_cfg.py` | PPO settings |
-| `nova5_tactile/tasks.py` | Registers the 20 tasks with Gymnasium |
-| `nova5_tactile/robot.py`, `robotiq.py`, `robot_cfg.py` | NOVA5 + 2F-85 model and actuators |
+| `nova5_tactile/tasks.py` | Registers the tasks with Gymnasium |
+| `nova5_tactile/grippers/__init__.py` | Gripper registry (joints, finger bodies, grip force, geometry) |
+| `nova5_tactile/grippers/cps_tactile.py` | CPS tactile gripper: CAD placements → articulated USD |
+| `nova5_tactile/robot.py`, `robotiq.py`, `robot_cfg.py` | NOVA5 with either gripper, 2F-85 model, actuators |
 | `nova5_tactile/gripper_kinematics.py` | 2F-85 finger opening ↔ joint angle |
 | `scripts/isaac_python.sh` | Runs any script with Isaac Sim + Isaac Lab |
-| `scripts/build_assets.py` | Builds `assets/generated/` |
+| `scripts/setup_assets.sh` | Fetch gripper CAD, convert it, build `assets/generated/` |
+| `scripts/convert_gripper_cad.py`, `build_assets.py` | The two build steps |
+| `scripts/render_usd.py` | Render one image of any USD file (asset checks) |
 | `scripts/run_peg_in_hole.py` | Scripted / zero policy, screenshots |
 | `scripts/train.py`, `scripts/play.py` | RL training and playback |
 | `assets/` | Source robot and benchmark CAD, with provenance ([assets/README.md](assets/README.md)) |
@@ -264,7 +321,8 @@ hand; picking, the task sequence and the time limit are not simulated.
 | Symptom | Fix |
 |---|---|
 | `ModuleNotFoundError` for `isaaclab` | Run through `scripts/isaac_python.sh`, and check `TASK_CONDA_ENV` names the env you installed Isaac Lab into |
-| `FileNotFoundError ... assets/generated/...` | Run `scripts/build_assets.py` (section 2.6) |
+| `FileNotFoundError ... assets/generated/...` | Run `scripts/setup_assets.sh` (section 2.6) |
+| `... has no 'cps_tactile' robot: rerun scripts/build_assets.py` | Assets were built before the gripper was added; run `scripts/setup_assets.sh` |
 | Vulkan `ERROR_INCOMPATIBLE_DRIVER` over SSH | Isaac Sim needs a display even when headless on some setups: log into the desktop on that machine and `export DISPLAY=:1` (or your display) before running |
 | Screenshot is black | Add `--enable_cameras` |
 | First start very slow | Shader compilation on first launch; later starts are faster |
@@ -288,9 +346,11 @@ the earlier scaffold of this repo: [docs/tactile_model_scaffold.md](docs/tactile
 
 ## Limitations
 
-- Gripper drive gains and its 2 N·m cap are simulation assumptions; the 2F-85
-  force controller is not modelled. Arm effort limits are synthetic (the vendor
-  model has none).
+- The tactile gripper's sensor mounting is placed by rule, and its 15 N grip
+  and drive gains are simulation choices, not the real motor (see
+  [The gripper model](#the-gripper-model)). Finger contact uses the sensor's
+  bounding box, not its rounded shape. The 2F-85's 2 N·m cap is likewise
+  assumed. Arm effort limits are synthetic (the vendor model has none).
 - Contact at 0.02 mm clearance is at the edge of what PhysX resolves; treat
   levels 3–4 with care until compared with real hardware.
 - The board is modelled exactly only within ±3 cm of the target hole; elsewhere
@@ -300,6 +360,9 @@ the earlier scaffold of this repo: [docs/tactile_model_scaffold.md](docs/tactile
 
 - ManipulationNet task CAD: [ManipulationNet/mnet_client](https://github.com/ManipulationNet/mnet_client) (Apache-2.0)
 - NOVA5 description: [Dobot-Arm/DOBOT_6Axis_ROS2_V4](https://github.com/Dobot-Arm/DOBOT_6Axis_ROS2_V4) (MIT)
+- Tactile gripper CAD: [Cyber-physical-Systems-Lab/master-thesis-tactile-gripper](https://github.com/Cyber-physical-Systems-Lab/master-thesis-tactile-gripper)
+  (Victoria Hellström; no licence file, so it is fetched at setup rather than copied here)
+- Daimon DM-Tac WL sensor model: Daimon Robotics' STEP (vendor file, supplied by the user at setup, not redistributed)
 - Robotiq 2F-85 URDF and meshes: `robot_description` package (BSD-3-Clause)
 - The environment follows the structure of Isaac Lab's Factory peg-insert task.
 

@@ -1,10 +1,13 @@
 """Build the generated USD assets into assets/generated/ (run once, ~1-2 min).
 
+Needs assets/generated/tactile_gripper/ from scripts/convert_gripper_cad.py for the CPS gripper.
+
+  nova5_cps_tactile.usd     NOVA5 + CPS-lab tactile gripper, one clonable articulation
   nova5_2f85.usd            NOVA5 + Robotiq 2F-85 (+ fingertip pads), one clonable articulation
   peg_{A..E}.usd            ManipulationNet steel pegs (visual CAD + convex colliders)
   board_visual.usd          NIST ATB M1 task board CAD (visual only)
   board_{A1..E4}.usd        board with exact colliders around that target hole
-  peg_in_hole.json          hole centres/yaws/measured gaps, peg grip data, gripper pad-gap table
+  peg_in_hole.json          hole centres/yaws/measured gaps, peg grip data, per-gripper data
 """
 import argparse
 from isaaclab.app import AppLauncher
@@ -21,29 +24,43 @@ from nova5_tactile.robot import author_nova5_2f85
 from nova5_tactile.mnet import peg_in_hole as pih
 from nova5_tactile.mnet import usd_assets
 from nova5_tactile import gripper_kinematics
+from nova5_tactile.grippers import GRIPPERS, cps_tactile
 
 OUT = ASSETS/'generated'
 
 
-def main():
-    OUT.mkdir(exist_ok=True)
+def build_robot(name):
+    """Write the RL robot USD for one gripper and return its metadata."""
+    spec = GRIPPERS[name]
     stage = Usd.Stage.CreateInMemory()
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z); UsdGeom.SetStageMetersPerUnit(stage, 1.)
+    root = '/nova5'
     # Rigid (non-compliant) pad contact for RL; tactile work uses the compliant pads of build_nova5_2f85().
-    spec = author_nova5_2f85(stage, '/nova5_2f85', pad_colliders='single', pad_stiffness=None)
+    robot = author_nova5_2f85(stage, root, pad_colliders='single', pad_stiffness=None, gripper=name)
     # RL asset: gravity off on every body (Isaac Lab's rigid_props stop at the first, outermost body).
-    for prim in Usd.PrimRange(stage.GetPrimAtPath('/nova5_2f85')):
+    for prim in Usd.PrimRange(stage.GetPrimAtPath(root)):
         if prim.HasAPI(UsdPhysics.RigidBodyAPI):
             PhysxSchema.PhysxRigidBodyAPI.Apply(prim).CreateDisableGravityAttr(True)
-    stage.SetDefaultPrim(stage.GetPrimAtPath('/nova5_2f85'))
-    stage.Export(str(OUT/'nova5_2f85.usd'))
-    print('robot', OUT/'nova5_2f85.usd', flush=True)
-    meta = {'robot': {'usd': 'nova5_2f85.usd', 'arm_joints': spec['arm_joints'], 'flange': spec['flange'],
-                      'gripper_joints': spec['gripper']['joint_names'],
-                      'pads': {k: v['body'].rsplit('/', 1)[-1] for k, v in spec['gripper']['tactile_pads'].items()},
-                      'pad_gap_table': [[float(q), gripper_kinematics.pad_gap(q)] for q in np.linspace(0, .725, 59)],
-                      'pad_face_z_in_base': [[float(q), float(gripper_kinematics.pad_face_in_base(q)[2])] for q in np.linspace(0, .725, 59)]},
-            'pegs': {}, 'holes': {}, 'board': {'thickness_m': pih.BOARD_THICKNESS, 'size_m': [.32, .25]}}
+    stage.SetDefaultPrim(stage.GetPrimAtPath(root))
+    stage.Export(str(OUT/spec.usd))
+    g = robot['gripper']
+    if name == 'robotiq_2f85':
+        gap = [[float(q), gripper_kinematics.pad_gap(q)] for q in np.linspace(0, .725, 59)]
+        extra = {}
+    else:
+        gap = cps_tactile.pad_gap_table(g['gap0_m'], g['q_range_m'])
+        extra = {k: g[k] for k in ('gap0_m', 'tool_offset_m', 'tip_below_contact_m', 'q_range_m', 'sensor', 'sensor_m', 'assumptions')}
+    print('robot', name, OUT/spec.usd, extra, flush=True)
+    return {'usd': spec.usd, 'arm_joints': robot['arm_joints'], 'flange': robot['flange'],
+            'gripper_joints': list(spec.joints), 'driver': spec.driver, 'fingers': spec.fingers,
+            'pad_gap_table': gap, **extra}
+
+
+def main():
+    OUT.mkdir(exist_ok=True)
+    meta = {'robots': {}, 'pegs': {}, 'holes': {}, 'board': {'thickness_m': pih.BOARD_THICKNESS, 'size_m': [.32, .25]}}
+    for name in ('cps_tactile', 'robotiq_2f85'):
+        meta['robots'][name] = build_robot(name)
     for shape in pih.SHAPES:
         meta['pegs'][shape] = usd_assets.write_peg(OUT/f'peg_{shape}.usd', shape)
         print('peg', shape, round(meta['pegs'][shape]['mass_kg']*1e3, 1), 'g', flush=True)

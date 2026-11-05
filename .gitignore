@@ -8,3 +8,4 @@ __pycache__/
 assets/generated/
 .pyshim/
 logs/
+third_party/

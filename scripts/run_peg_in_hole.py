@@ -11,13 +11,16 @@ import argparse
 from isaaclab.app import AppLauncher
 p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 p.add_argument('--task', default='A1', help='shape A-E + level 1-4')
+p.add_argument('--gripper', default=None, help='cps_tactile (default) or robotiq_2f85')
 p.add_argument('--num_envs', type=int, default=16)
 p.add_argument('--episodes', type=int, default=1)
-p.add_argument('--policy', choices=['scripted', 'zero'], default='scripted')
+p.add_argument('--policy', choices=['scripted', 'zero', 'random'], default='scripted')
 p.add_argument('--screenshot', help='save an RGB frame here (needs --enable_cameras)')
 p.add_argument('--screenshot_step', type=int, default=60)
 p.add_argument('--trace', type=int, default=0, help='print env 0 state for the first N steps')
-p.add_argument('--grip_effort', type=float, default=None, help='override cfg.grip_effort (N m)')
+p.add_argument('--grip_effort', type=float, default=None, help='override cfg.grip_effort (N or N m)')
+p.add_argument('--eye', type=float, nargs=3, help='screenshot camera position relative to the hole top (m)')
+p.add_argument('--lookat', type=float, nargs=3, help='screenshot camera target relative to the hole top (m)')
 AppLauncher.add_app_launcher_args(p); args = p.parse_args()
 app = AppLauncher(args).app
 
@@ -43,11 +46,19 @@ def scripted(obs, cfg):
 def main():
     tasks.register()
     cfg = PegInHoleEnvCfg(task=args.task)
+    if args.gripper:
+        cfg.gripper = args.gripper; cfg.apply_gripper()
     cfg.scene.num_envs = args.num_envs; cfg.sim.device = args.device
     if args.grip_effort is not None:
         cfg.grip_effort = args.grip_effort
     cfg.screenshot_camera = bool(args.screenshot)
-    env = gym.make(tasks.task_id(args.task), cfg=cfg)
+    from nova5_tactile.mnet.peg_in_hole_env_cfg import HOLE_XY, TABLE_TOP
+    top = (HOLE_XY[0], HOLE_XY[1], TABLE_TOP+.025)
+    if args.eye:
+        cfg.viewer.eye = tuple(t+e for t, e in zip(top, args.eye))
+    if args.lookat:
+        cfg.viewer.lookat = tuple(t+e for t, e in zip(top, args.lookat))
+    env = gym.make(tasks.task_id(args.task, '' if cfg.gripper == 'cps_tactile' else '2F85'), cfg=cfg)
     obs, _ = env.reset()
     u = env.unwrapped
     if args.trace:
@@ -56,17 +67,20 @@ def main():
               'grip_q', round(float(u.robot.data.joint_pos.torch[0, u.driver]), 3), 'q_open', round(u.q_open, 3), 'q_grasp', round(u.q_grasp, 3), flush=True)
     for ep in range(args.episodes):
         for step in range(int(u.max_episode_length)):
-            act = scripted(obs['policy'], cfg) if args.policy == 'scripted' else torch.zeros(u.num_envs, 4, device=u.device)
+            act = (scripted(obs['policy'], cfg) if args.policy == 'scripted' else
+                   2*torch.rand(u.num_envs, 4, device=u.device)-1 if args.policy == 'random' else torch.zeros(u.num_envs, 4, device=u.device))
             if step == 0:
                 st = obs['policy']
                 print('START peg rel hole (mm) mean', (st[:, 8:11].mean(0)*1e3).tolist(), flush=True)
             prev = {'tip': u._fingertip()[0].clone(), 'peg': u._peg_state()[0].clone(), 'q': u.robot.data.joint_pos.torch.clone(), 'act': act.clone()}
             obs, rew, term, trunc, extras = env.step(act)
-            bad = ~torch.isfinite(u.robot.data.joint_pos.torch).all(-1) | ~torch.isfinite(u._peg_state()[0]).all(-1)
+            bad = (~torch.isfinite(u.robot.data.joint_pos.torch).all(-1) | ~torch.isfinite(u._peg_state()[0]).all(-1)
+                   | ~torch.isfinite(obs['policy']).all(-1))
             if bad.any() and not getattr(u, '_nan_reported', False):
                 u._nan_reported = True; i = int(bad.nonzero()[0])
                 print('NAN step', step, 'envs', bad.nonzero().flatten().tolist(), 'env', i, 'prev tip', (prev['tip'][i]*1e3).round().tolist(),
-                      'prev peg', (prev['peg'][i]*1e3).round().tolist(), 'prev q', prev['q'][i].round(decimals=3).tolist(), 'act', prev['act'][i].tolist(), flush=True)
+                      'prev peg', (prev['peg'][i]*1e3).round().tolist(), 'prev q', prev['q'][i].round(decimals=3).tolist(), 'act', prev['act'][i].tolist(),
+                      'obs', obs['policy'][i].tolist(), 'q', u.robot.data.joint_pos.torch[i].tolist(), flush=True)
             ever = u.success.clone() if step == 0 else ever | u.success
             if args.trace and step < args.trace:
                 tip, _ = u._fingertip(); pp, _ = u._peg_state()

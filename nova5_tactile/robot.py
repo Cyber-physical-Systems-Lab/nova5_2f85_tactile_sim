@@ -19,11 +19,12 @@ def cube(path, size, position, color):
 
 
 def author_nova5_2f85(stage, root, *, base_height=0., tactile=True, pad_stiffness=1e4, pad_damping=20.,
-                      pad_colliders='taxels', taxel_grid=(6, 9)):
+                      pad_colliders='taxels', taxel_grid=(6, 9), gripper='robotiq_2f85'):
     """Author arm + gripper under `root` (USD only, no world joint). Returns the spec dict.
 
     The NOVA5 base_link carries the articulation root. The arm base sits
-    `base_height` above `root`.
+    `base_height` above `root`. gripper: 'robotiq_2f85' (with optional tactile
+    pads) or 'cps_tactile' (the lab's tactile-sensor gripper, see grippers/cps_tactile.py).
     """
     UsdGeom.Xform.Define(stage, root)
     arm_prim = UsdGeom.Xform.Define(stage, root+'/Arm').GetPrim()
@@ -48,9 +49,15 @@ def author_nova5_2f85(stage, root, *, base_height=0., tactile=True, pad_stiffnes
                 prim.SetActive(False)
     base_path = str(bodies['base_link'].GetPath())
     UsdPhysics.ArticulationRootAPI.Apply(stage.GetPrimAtPath(base_path))
-    gripper = attach_robotiq(stage, root, str(bodies[FLANGE].GetPath()), tactile=tactile,
-                             pad_stiffness=pad_stiffness, pad_damping=pad_damping,
-                             pad_colliders=pad_colliders, taxel_grid=taxel_grid)
+    if gripper == 'cps_tactile':
+        from .grippers.cps_tactile import attach_cps_tactile
+        gripper = attach_cps_tactile(stage, root, str(bodies[FLANGE].GetPath()))
+    elif gripper == 'robotiq_2f85':
+        gripper = attach_robotiq(stage, root, str(bodies[FLANGE].GetPath()), tactile=tactile,
+                                 pad_stiffness=pad_stiffness, pad_damping=pad_damping,
+                                 pad_colliders=pad_colliders, taxel_grid=taxel_grid)
+    else:
+        raise ValueError(f'unknown gripper {gripper!r}')
     props = PhysxSchema.PhysxArticulationAPI.Apply(stage.GetPrimAtPath(base_path))
     props.CreateEnabledSelfCollisionsAttr(False)
     props.CreateSolverPositionIterationCountAttr(16); props.CreateSolverVelocityIterationCountAttr(4)

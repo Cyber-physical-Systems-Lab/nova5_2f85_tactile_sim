@@ -23,7 +23,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import math as tm
 from ..kinematics import pose_matrix, forward_chain, rotation_error
-from ..gripper_kinematics import mimic_multipliers
+from ..grippers import GRIPPERS
 from .peg_in_hole_env_cfg import PegInHoleEnvCfg, GENERATED, TABLE_TOP, HOLE_XY, ROBOT_BASE_HEIGHT
 from . import peg_in_hole as pih
 
@@ -39,28 +39,37 @@ class PegInHoleEnv(DirectRLEnv):
 
     def __init__(self, cfg: PegInHoleEnvCfg, render_mode=None, **kwargs):
         self.meta = json.loads((GENERATED/'peg_in_hole.json').read_text())
+        cfg.apply_gripper()  # in case cfg.gripper was changed after the config was built
+        self.grip = GRIPPERS[cfg.gripper]
+        if cfg.gripper not in self.meta.get('robots', {}):
+            raise RuntimeError(f'{GENERATED}/peg_in_hole.json has no {cfg.gripper!r} robot: rerun scripts/build_assets.py')
+        self.rmeta = self.meta['robots'][cfg.gripper]
         super().__init__(cfg, render_mode, **kwargs)
         r = self.robot
-        self.arm_ids = [r.joint_names.index(n) for n in self.meta['robot']['arm_joints']]
-        mult = mimic_multipliers()
-        self.grip_ids = [r.joint_names.index(n) for n in mult]
-        self.grip_mult = torch.tensor(list(mult.values()), device=self.device)
-        self.driver = r.joint_names.index('finger_joint')
-        self.pad_ids = [r.body_names.index(n) for n in self.meta['robot']['pads'].values()]
-        self.flange_id = r.body_names.index(self.meta['robot']['flange'])
+        self.arm_ids = [r.joint_names.index(n) for n in self.rmeta['arm_joints']]
+        self.grip_ids = [r.joint_names.index(n) for n in self.grip.joints]
+        self.grip_mult = torch.tensor(list(self.grip.joints.values()), device=self.device)
+        self.driver = r.joint_names.index(self.grip.driver)
+        self.pad_ids = [r.body_names.index(n) for n in self.grip.fingers.values()]
+        self.flange_id = r.body_names.index(self.rmeta['flange'])
+        self.grip_effort = cfg.grip_effort if cfg.grip_effort is not None else self.grip.grip_effort
+        # Geometry measured by build_assets.py wins over the registry defaults.
+        self.tool_offset = np.array(self.rmeta.get('tool_offset_m', self.grip.tool_offset))
+        tip_below = self.rmeta.get('tip_below_contact_m', self.grip.tip_below_contact)
+        self.min_tip_height = cfg.min_tip_height if cfg.min_tip_height is not None else tip_below+.001
         jac = r.data.body_link_jacobian_w.torch
         self.jac_offset = 1 if jac.shape[1] == len(r.body_names)-1 else 0
         peg = self.meta['pegs'][cfg.task[0]]; hole = self.meta['holes'][cfg.task]
         self.peg_len, self.grip_yaw, self.grip_width = peg['length_m'], peg['grip_yaw'], peg['grip_width_m']
         self.hole_yaw = hole['yaw']
-        gap = np.array(self.meta['robot']['pad_gap_table'])
+        gap = np.array(self.rmeta['pad_gap_table'])
         self.q_open = float(np.interp(self.grip_width+.006, gap[::-1, 1], gap[::-1, 0]))
         # Pads pre-shaped 0.3 mm inside the peg width; the closing effort then holds it.
         self.q_grasp = float(np.interp(self.grip_width-.0003, gap[::-1, 1], gap[::-1, 0]))
         # Hole top centre (env frame) and the fingertip yaw that aligns the peg with the hole.
         self.hole_top = torch.tensor([HOLE_XY[0], HOLE_XY[1], TABLE_TOP+pih.BOARD_THICKNESS], device=self.device)
         self.goal_yaw = float(np.arctan2(np.sin(self.hole_yaw+self.grip_yaw), np.cos(self.hole_yaw+self.grip_yaw)))
-        self.peg_top_above_pads = .005  # peg top sticks out this far above the pad centres
+        self.peg_top_above_pads = self.grip.peg_top_above_contact  # peg top sticks out this far above the contact centres
         self.actions = torch.zeros(self.num_envs, cfg.action_space, device=self.device)
         self.prev_actions = torch.zeros_like(self.actions)
         self.success = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -107,7 +116,7 @@ class PegInHoleEnv(DirectRLEnv):
         joints = {p.GetName(): UsdPhysics.Joint(p) for p in Usd.PrimRange(root) if p.IsA(UsdPhysics.Joint)}
         def frame(pos, q): return pose_matrix(pos, [*q.GetImaginary(), q.GetReal()])
         parents, children, axes = [], [], []
-        for n in self.meta['robot']['arm_joints']:
+        for n in self.rmeta['arm_joints']:
             j = joints[n]
             parents.append(frame(j.GetLocalPos0Attr().Get(), j.GetLocalRot0Attr().Get()))
             children.append(frame(j.GetLocalPos1Attr().Get(), j.GetLocalRot1Attr().Get()))
@@ -115,7 +124,7 @@ class PegInHoleEnv(DirectRLEnv):
         base = pose_matrix([0, 0, ROBOT_BASE_HEIGHT], [0, 0, 0, 1])
         target = self.hole_top.cpu().numpy()+[0, 0, .06+self.peg_len]
         R = Rotation.from_euler('xyz', [DOWN_ROLL, 0, self.goal_yaw]).as_matrix()
-        offset = np.array([0, 0, .146])  # pad centres in the flange frame (gripper half closed)
+        offset = self.tool_offset  # contact-face midpoint in the flange frame
         lim = self.robot.data.joint_pos_limits.torch[0, self.arm_ids].cpu().numpy()
         def res(q):
             f = base@forward_chain(q, parents, children, axes)
@@ -161,10 +170,10 @@ class PegInHoleEnv(DirectRLEnv):
     # --------------------------------------------------------------- control
     def _pre_physics_step(self, actions):
         self.prev_actions = self.actions.clone()
-        self.actions = actions.clamp(-1, 1)
+        self.actions = torch.nan_to_num(actions, nan=0., posinf=0., neginf=0.).clamp(-1, 1)
         pos, quat = self._fingertip()
         target = pos+self.actions[:, :3]*self.cfg.pos_action_scale
-        lo = self.hole_top-torch.tensor([self.cfg.pos_bounds[0], self.cfg.pos_bounds[1], -self.cfg.min_tip_height], device=self.device)
+        lo = self.hole_top-torch.tensor([self.cfg.pos_bounds[0], self.cfg.pos_bounds[1], -self.min_tip_height], device=self.device)
         hi = self.hole_top+torch.tensor([*self.cfg.pos_bounds[:2], self.cfg.pos_bounds[2]], device=self.device)
         target = torch.max(torch.min(target, hi), lo)
         yaw = tm.wrap_to_pi(self._yaw(quat)+self.actions[:, 3]*self.cfg.yaw_action_scale)
@@ -178,7 +187,7 @@ class PegInHoleEnv(DirectRLEnv):
 
     def _hold_grip(self, effort=None):
         e = torch.zeros_like(self.robot.data.joint_pos.torch)
-        e[:, self.driver] = self.cfg.grip_effort if effort is None else effort
+        e[:, self.driver] = self.grip_effort if effort is None else effort
         self.robot.set_joint_effort_target_index(target=e)
 
     # ---------------------------------------------------------- observations
@@ -196,7 +205,7 @@ class PegInHoleEnv(DirectRLEnv):
         obs = torch.cat([pos-self.hole_top, torch.sin(yaw_err)[:, None], torch.cos(yaw_err)[:, None], lin,
                          peg_p-self.hole_top, torch.sin(peg_yaw_err)[:, None], torch.cos(peg_yaw_err)[:, None],
                          self.actions], -1)
-        return {'policy': obs}
+        return {'policy': torch.nan_to_num(obs, nan=0., posinf=0., neginf=0.)}
 
     # --------------------------------------------------------------- rewards
     def _keypoints(self, pos, yaw):
@@ -222,7 +231,7 @@ class PegInHoleEnv(DirectRLEnv):
         self.extras.setdefault('log', {}).update({'Metrics/keypoint_dist_m': d.mean().item(),
                                                    'Metrics/depth_m': depth.mean().item(),
                                                    'Metrics/inserted_now': self.success.float().mean().item()})
-        return rew
+        return torch.nan_to_num(rew, nan=0., posinf=0., neginf=0.)
 
     def _get_dones(self):
         # One shared episode clock: every env times out on the same step, because the reset
@@ -230,7 +239,14 @@ class PegInHoleEnv(DirectRLEnv):
         self.sync_step += 1
         done = self.sync_step >= self.max_episode_length
         time_out = torch.full((self.num_envs,), bool(done), device=self.device)
-        return torch.zeros_like(time_out), time_out
+        # Guard: an env whose physics blew up (non-finite state, or the peg flung away) is reset at once,
+        # so trainers never see its NaNs. Its reset steps the whole simulation, like the timeout reset.
+        peg_p, _ = self._peg_state()
+        bad = (~torch.isfinite(self.robot.data.joint_pos.torch).all(-1) | ~torch.isfinite(self.robot.data.joint_vel.torch).all(-1)
+               | ~torch.isfinite(peg_p).all(-1) | ~torch.isfinite(self.peg.data.root_vel_w.torch).all(-1)
+               | (self.peg.data.root_lin_vel_w.torch.norm(dim=-1) > 5.) | ((peg_p-self.hole_top).norm(dim=-1) > .5))
+        self.extras.setdefault('log', {})['Metrics/blown_up_envs'] = int(bad.sum())
+        return bad & ~time_out, time_out
 
     # ----------------------------------------------------------------- reset
     def _step_no_action(self):
@@ -289,7 +305,8 @@ class PegInHoleEnv(DirectRLEnv):
         view.set_gravity(carb.Float3(*self.cfg.sim.gravity))
         self.actions.zero_(); self.prev_actions.zero_()
         self.ever_success[env_ids] = False
-        self.sync_step = 0
+        if len(env_ids) == self.num_envs:
+            self.sync_step = 0
         self.arm_target = self.robot.data.joint_pos.torch[:, self.arm_ids].clone()
 
 

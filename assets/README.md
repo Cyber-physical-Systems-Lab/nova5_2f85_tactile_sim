@@ -31,3 +31,14 @@ repository's Apache-2.0 `LICENSE`. The STLs are in centimetres.
 | `manipulationnet/` | Apache-2.0 (`manipulationnet/peg_in_hole/LICENSE`) |
 
 `generated/` is built from these by `scripts/build_assets.py` and is not committed.
+
+## CPS tactile gripper and Daimon sensor (not in this repo)
+
+Fetched or supplied at setup by `scripts/setup_assets.sh`, into `third_party/` (git-ignored):
+
+- `third_party/tactile_gripper/`: [Cyber-physical-Systems-Lab/master-thesis-tactile-gripper](https://github.com/Cyber-physical-Systems-Lab/master-thesis-tactile-gripper),
+  commit `783f026` (Solid Edge CAD + STEP parts; the repository has no licence file).
+- `third_party/daimon/DM-Tac WL.STEP`: Daimon Robotics' DM-Tac WL model from the
+  `DM-Tac-W-STEP-20250417` package (vendor file, supplied by the user).
+
+`scripts/convert_gripper_cad.py` converts both to USD under `generated/tactile_gripper/`.
